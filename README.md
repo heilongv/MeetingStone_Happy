@@ -5,12 +5,12 @@
 - `MeetingStone\` — 主插件
 - `MeetingStoneEX\` — 扩展（老农粉丝图标、神秘备注、忽略列表、额外过滤）
 
-## 来源
+## 来源与许可
 
-- 原版作者：DengSir（tdaddon@163.com）
-- 开心版上游：<https://gitee.com/xmmmmm/meeting-stone_-happy>
-  同款镜像：<https://github.com/brooklynb7/MeetingStone_Happy>、<https://github.com/Lianzy-Baimiao/MeetingStone_Happy>
-- 这份是整合包（LNui）里在用的版本，加上我们自己的修复；沿用上游的 WTFPL 许可，版权归原作者。
+- 原版作者：DengSir（tdaddon@163.com）；开心版上游：<https://gitee.com/xmmmmm/meeting-stone_-happy>（master分支，许可是WTFPL）
+- 本仓库是**整合包（LNui）里在用的那一版**加上我们自己的修复，不是上游的镜像，也不代表上游。
+- 许可沿用上游的WTFPL v2，原文逐字放在`LICENSE`。这个许可**不附加任何条件**（不用署名、不用同样方式开源、改了也不用说），这里写来源纯粹是出于尊重。
+- 插件里内嵌的`NetEase*`库和`Media\`素材来自网易当年的集合石项目，版权归原权利方，随插件一起分发。
 
 ## 安装
 
@@ -29,7 +29,3 @@ toc里写的是`## Dependencies: !!!Libs`——这套版本是跟着整合包走
 - 带12.1客户端的适配修补，以及本地加的东西（老农粉丝识别、`MeetingStoneEX`的忽略列表修复等）
 
 **同步上游更新必须逐文件merge**，不能整目录覆盖——本地改动分散在若干文件里，覆盖就丢。
-
-## 授权
-
-WTFPL v2，见`LICENSE`。
