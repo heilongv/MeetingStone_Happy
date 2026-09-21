@@ -7,9 +7,10 @@
 
 ## 来源与许可
 
-- 原版作者：DengSir（tdaddon@163.com）；开心版上游：<https://gitee.com/xmmmmm/meeting-stone_-happy>（master分支，许可是WTFPL）
+- 原版作者：DengSir（tdaddon@163.com）；开心版上游：<https://gitee.com/xmmmmm/meeting-stone_-happy>（master分支，WTFPL）
 - 本仓库是**整合包（LNui）里在用的那一版**加上我们自己的修复，不是上游的镜像，也不代表上游。
-- 许可沿用上游的WTFPL v2，原文逐字放在`LICENSE`。这个许可**不附加任何条件**（不用署名、不用同样方式开源、改了也不用说），这里写来源纯粹是出于尊重。
+- **许可：GPLv3**（全文在`LICENSE`）。可以自由使用、修改、再发布；但**改了再发布必须同样开源**，不能闭源拿去卖。
+- 上游那份WTFPL原文留在`LICENSE-WTFPL.txt`。WTFPL本身不带任何条件，所以**从上游拿到的那部分代码，别人仍可按WTFPL使用**（比本仓库的GPLv3更宽松），这点拦不住；留着原文只是把声明保留下来。
 - 插件里内嵌的`NetEase*`库和`Media\`素材来自网易当年的集合石项目，版权归原权利方，随插件一起分发。
 
 ## 安装
