@@ -1,6 +1,7 @@
 BuildEnv(...)
 
-ApplicantPanel = Addon:NewModule(CreateFrame('Frame', nil, ManagerPanel), 'ApplicantPanel', 'AceEvent-3.0', 'AceTimer-3.0')
+ApplicantPanel = Addon:NewModule(CreateFrame('Frame', nil, ManagerPanel), 'ApplicantPanel', 'AceEvent-3.0', 'AceTimer-3.0',
+    'AceBucket-3.0')
 
 local AllMythicChallengeMaps = {691,695,699,703,705,709,713,717}
 
@@ -340,13 +341,36 @@ function ApplicantPanel:OnInitialize()
     self.ApplicantList = ApplicantList
     self.AutoInvite = AutoInvite
 
-    self:RegisterEvent('LFG_LIST_APPLICANT_UPDATED', 'UpdateApplicantsList')
+    -- 申请者列表: 逐条事件攒一个窗口再刷, 并且只重读被改动过的那个申请人
+    self.applicantList = {}
+    self.dirtyApplicants = {}
+    self.allDirty = true
+
+    self:RegisterBucketEvent('LFG_LIST_APPLICANT_UPDATED', 0.2, 'LFG_LIST_APPLICANT_UPDATED_BUCKET')
     self:RegisterEvent('LFG_LIST_APPLICANT_LIST_UPDATED')
     self:RegisterEvent('LFG_LIST_ACTIVE_ENTRY_UPDATE', function()
+        self:MarkAllApplicantsDirty()
         self:UpdateApplicantsList()
     end)
 
-    self:SetScript('OnShow', self.ClearNewPending)
+    self:SetScript('OnShow', self.OnShow)
+end
+
+function ApplicantPanel:MarkAllApplicantsDirty()
+    self.allDirty = true
+    wipe(self.dirtyApplicants)
+end
+
+function ApplicantPanel:LFG_LIST_APPLICANT_UPDATED_BUCKET(ids)
+    if type(ids) == 'table' then
+        for id in pairs(ids) do
+            self.dirtyApplicants[id] = true
+        end
+    else
+        -- 拿不到id就整表重读, 顶多费点, 不能漏刷新
+        self.allDirty = true
+    end
+    self:UpdateApplicantsList()
 end
 
 function ApplicantPanel:LFG_LIST_APPLICANT_LIST_UPDATED(_, hasNewPending, hasNewPendingWithData)
@@ -354,9 +378,19 @@ function ApplicantPanel:LFG_LIST_APPLICANT_LIST_UPDATED(_, hasNewPending, hasNew
     if self.hasNewPending and Profile:GetSetting("sound") then
         PlaySound(47615, "Master", false)
     end
+    self:MarkAllApplicantsDirty()
     self:UpdateApplicantsList()
     self:SendMessage('MEETINGSTONE_NEW_APPLICANT_STATUS_UPDATE')
     self:UpdateAutoInvite()
+end
+
+function ApplicantPanel:OnShow()
+    self:ClearNewPending()
+    -- 面板关着的时候只记账不重建, 打开时补一次
+    if self.rebuildOnShow then
+        self:MarkAllApplicantsDirty()
+        self:UpdateApplicantsList()
+    end
 end
 
 function ApplicantPanel:HasNewPending()
@@ -385,29 +419,77 @@ local function _SortApplicants(applicant1, applicant2)
     return order1 < order2
 end
   
+-- secret值不能比较/拼接, 签名里统一换成普通值
+local function SafeValue(value, fallback)
+    if value == nil or issecretvalue(value) then
+        return fallback
+    end
+    return value
+end
+
 function ApplicantPanel:UpdateApplicantsList()
-    local list = {}
+    if not self:IsVisible() then
+        -- 面板没开着就只记个账, 等打开时补
+        self.rebuildOnShow = true
+        return
+    end
+    self.rebuildOnShow = nil
+
+    local list = wipe(self.applicantList)
+    local dirty = self.dirtyApplicants
+    local allDirty = self.allDirty
+    local activityID, isMythicPlusActivity
+    local count = 0
+
     local applicants = C_LFGList.GetApplicants()
 
     if applicants and C_LFGList.HasActiveEntryInfo() then
         local info = C_LFGList.GetActiveEntryInfo()
-        local isMythicPlusActivity = info.isMythicPlusActivity
-        if issecretvalue(isMythicPlusActivity) then isMythicPlusActivity = false end
-        local activityID  = info.activityIDs[1]
-        for i, id in ipairs(applicants) do
+        isMythicPlusActivity = SafeValue(info.isMythicPlusActivity, false)
+        activityID = info.activityIDs[1]
+
+        for i = 1, #applicants do
+            local id = applicants[i]
             local applicantInfo = C_LFGList.GetApplicantInfo(id)
-            local numMembers = applicantInfo.numMembers
-            if issecretvalue(numMembers) then numMembers = 1 end
+            local numMembers = SafeValue(applicantInfo.numMembers, 1)
+            local reread = allDirty or dirty[id]
             for j = 1, numMembers do
-                tinsert(list, Applicant:Get(id, j, activityID, isMythicPlusActivity))
+                -- 没被改动过的行直接用原对象, 省掉那串C调用和描述解码
+                local applicant = not reread and Applicant:Peek(id, j) or nil
+                if not applicant then
+                    applicant = Applicant:Get(id, j, activityID, isMythicPlusActivity)
+                end
+                count = count + 1
+                list[count] = applicant
             end
         end
 
         table.sort(list, _SortApplicants)
     end
 
-    self.ApplicantList:SetItemList(list)
-    self.ApplicantList:Refresh()
+    self.allDirty = nil
+    wipe(dirty)
+
+    -- 内容没变就只换数据不重画; 组队人数/已邀请人数也算进签名, 操作列显示跟它们有关
+    local signature = {
+        GetNumGroupMembers(LE_PARTY_CATEGORY_HOME),
+        SafeValue(C_LFGList.GetNumInvitedApplicantMembers(), 0),
+    }
+    for i = 1, count do
+        local applicant = list[i]
+        signature[#signature + 1] = format('%s/%s/%s/%s/%s/%s/%s',
+            SafeValue(applicant:GetID(), 0), SafeValue(applicant:GetIndex(), 0),
+            SafeValue(applicant:GetStatus(), ''), tostring(SafeValue(applicant:GetPendingStatus(), false)),
+            tostring(SafeValue(applicant:IsNew(), false)), SafeValue(applicant:GetOrderID(), 0),
+            applicant.revision or 0)
+    end
+
+    local newSignature = table.concat(signature, '|')
+    if newSignature ~= self.listSignature then
+        self.listSignature = newSignature
+        self.ApplicantList:SetItemList(list)
+        self.ApplicantList:Refresh()
+    end
 end
 
 function ApplicantPanel:Invite(id, numMembers)
@@ -570,3 +652,4 @@ function ApplicantPanel:StartInvite()
         end
     end
 end
+

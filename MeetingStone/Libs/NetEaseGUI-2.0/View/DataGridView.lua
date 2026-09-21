@@ -17,8 +17,15 @@ function DataGridView:Constructor()
             return value
         end,
     })
+    -- 排序键的版本号: 条目自己报了版本号且没变, 这次排序就不用重算它的键
+    self.sortRevCache = setmetatable({}, {__mode = 'k'})
     self:SetCallback('OnItemCreated', self.OnItemCreated)
     self:SetCallback('OnItemFormatted', self.OnItemFormatted)
+end
+
+function DataGridView:InvalidateSortKeys()
+    wipe(self.sortCache)
+    wipe(self.sortRevCache)
 end
 
 function DataGridView:MakeSortValue(object)
@@ -40,7 +47,8 @@ function DataGridView:MakeSortValue(object)
             end
         else
             value = strsub(tostring(value), 1, 50)
-            return value .. strrep(value, 50 - #value) .. base
+            -- 主排序值补到定宽再用第二排序键兜底; 原先这里填的是value自己(笔误), 会做出六百多字节的键
+            return value .. strrep(' ', 50 - #value) .. base
         end
     end
 end
@@ -166,15 +174,11 @@ end
 function DataGridView:SetSortHandler(sortHandler, desc)
     if sortHandler ~= self.sortHandler then
         self.sortDesc = desc
+        self:InvalidateSortKeys()
     else
         self.sortDesc = not self.sortDesc
     end
-    -- if sortHandler ~= self.sortHandler then
-    --     wipe(self.sortCache)
-    -- end
     self.sortHandler = sortHandler
-    -- self:Sort()
-    -- self:UpdateFilter()
     self:Refresh()
 end
 
@@ -203,23 +207,40 @@ function DataGridView:Sort()
         return
     end
 
-    wipe(self.sortCache)
-
     local itemList = self:GetItemList()
-    if type(itemList) == 'table' then
-        if self.sortDesc then
-            sort(itemList, function(a, b)
-                return self.sortCache[a] > self.sortCache[b]
-            end)
+    if type(itemList) ~= 'table' then
+        return
+    end
+
+    -- 重算排序键: 报了版本号且没变的条目跳过, 没版本号的照旧每次都算
+    local cache, revCache = self.sortCache, self.sortRevCache
+    for i = 1, #itemList do
+        local item = itemList[i]
+        local getter = type(item) == 'table' and item.GetRevision
+        local revision = getter and getter(item)
+        if revision then
+            if revCache[item] ~= revision then
+                revCache[item] = revision
+                cache[item] = self:MakeSortValue(item)
+            end
         else
-            sort(itemList, function(a, b)
-                return self.sortCache[a] < self.sortCache[b]
-            end)
+            cache[item] = self:MakeSortValue(item)
         end
+    end
+
+    if self.sortDesc then
+        sort(itemList, function(a, b)
+            return cache[a] > cache[b]
+        end)
+    else
+        sort(itemList, function(a, b)
+            return cache[a] < cache[b]
+        end)
     end
 end
 
 function DataGridView:SetItemList(itemList)
     self:SuperCall('SetItemList', itemList)
+    self:InvalidateSortKeys()
     self:Refresh()
 end

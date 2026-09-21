@@ -67,6 +67,15 @@ local BrowsePanel = Addon:GetModule('BrowsePanel')
 local MainPanel = Addon:GetModule('MainPanel')
 local Profile = Addon:GetModule('Profile')
 
+-- 屏蔽名单是过滤器读的外部状态, 改了就得让列表的过滤缓存作废,
+-- 否则被屏蔽的行要等到那条队伍自己变化才消失
+local function InvalidateActivityFilter()
+    local list = BrowsePanel.ActivityList
+    if list and list.InvalidateFilter then
+        list:InvalidateFilter()
+    end
+end
+
 if not MEETINGSTONE_UI_DB.IGNORE_LIST then
     MEETINGSTONE_UI_DB.IGNORE_LIST = {}
 end
@@ -662,6 +671,7 @@ function BrowsePanel:ToggleActivityMenu(anchor, activity)
             func = function()
                 local name = activity:GetLeader()
                 BrowsePanel.IgnoreLeaderOnly[name] = true
+                InvalidateActivityFilter()
                 if MEETINGSTONE_UI_DB.IGNORE_TIPS_LOG then
                     print(name .. " 已加入黑名单")
                 end
@@ -679,6 +689,7 @@ function BrowsePanel:ToggleActivityMenu(anchor, activity)
                     print('添加过滤：', title)
                 end
                 BrowsePanel.IgnoreWithTitle[title] = true
+                InvalidateActivityFilter()
                 BrowsePanel.ActivityList:Refresh()
             end,
         },
@@ -907,11 +918,13 @@ hooksecurefunc(BrowsePanel.ActivityList, "SetSelected", function(self, index)
         local leader = activity:GetLeader()
         if leader and leader ~= "" then
             BrowsePanel.IgnoreLeaderOnly[leader] = true
+            InvalidateActivityFilter()
         end
     elseif IsShiftKeyDown() then
         local title = activity:GetSummary()
         if title and title ~= "" then
             BrowsePanel.IgnoreWithTitle[title] = true
+            InvalidateActivityFilter()
         end
     end
     self:UpdateFilter()

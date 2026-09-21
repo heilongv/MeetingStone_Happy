@@ -273,16 +273,37 @@ function CodeDescriptionData(activity)
     end
 end
 
+-- 申请者备注串每次刷新列表都会被解一遍, 同一段文字解一次就够(只缓存普通字符串, 弱键)
+local descriptionCache = setmetatable({}, {__mode = 'k'})
+
 function DecodeDescriptionData(description)
     if issecretvalue(description) or not description or description == '' then
         return
     end
-    local summary, data = description:match('^(.*)%((.+)%)$')
-    if data then
-        return summary, AceSerializer:Deserialize(data)
-    else
-        return description
+
+    local cacheable = type(description) == 'string'
+    if cacheable then
+        local cached = descriptionCache[description]
+        if cached then
+            return unpack(cached, 1, cached.n)
+        end
     end
+
+    local summary, data = description:match('^(.*)%((.+)%)$')
+    local result
+    if data then
+        local decoded = {AceSerializer:Deserialize(data)}
+        result = {summary, unpack(decoded, 1, #decoded)}
+    else
+        result = {description}
+    end
+    result.n = #result
+
+    if cacheable then
+        descriptionCache[description] = result
+    end
+
+    return unpack(result, 1, result.n)
 end
 
 function GetClassColoredText(class, text)

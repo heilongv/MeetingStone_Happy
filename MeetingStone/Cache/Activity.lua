@@ -36,21 +36,20 @@ Activity:InitAttr{
     'CategoryID'
 }
 
-Activity._Objects = setmetatable({}, {__mode = 'v'})
-
 function Activity:Constructor(id)
     self.killedBosses = {}
     self:SetID(id)
-    self:Update()
-    self._Objects[id] = self
 end
 
-function Activity:Get(id)
-    return self._Objects[id] or self:New(id)
+function Activity:GetRevision()
+    return self.revision
 end
 
 -- [已移除] 此处原为混淆的 loadstring 动态执行代码（检测队伍职业集中度），其调用点已被注释，属死代码；移除可省去加载期执行开销
 function Activity:Update()
+    -- 刷新一次就算变过一次: 过滤缓存和排序键靠它判断要不要重算
+    self.revision = (self.revision or 0) + 1
+
     local info = C_LFGList.GetSearchResultInfo(self:GetID())
     if not info or issecretvalue(info) then
         return
@@ -121,6 +120,8 @@ function Activity:Update()
 
     if leader then
         self:SetLeaderShort(leader:match('^(.+)%-') or leader)
+    else
+        self:SetLeaderShort(nil)
     end
 
     self:SetActivityID(activityId)
@@ -166,6 +167,7 @@ function Activity:Update()
     end
 
     wipe(self.killedBosses)
+    self:SetKilledBossCount(0)
     local customId = self:GetCustomID()
     if customId and CUSTOM_PROGRESSION_LIST[customId] then
         local savedInstance = self:GetSavedInstance()
@@ -186,6 +188,8 @@ function Activity:Update()
 
     --fnn(self)
 
+    -- 活动类型排序键跟着活动ID走, 复用对象时要让它重算
+    self._typeSortValue = nil
     self:UpdateSortValue()
 
     return true

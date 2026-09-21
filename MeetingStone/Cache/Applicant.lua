@@ -57,6 +57,9 @@ local APPLICANT_ALREADY_TOUGHT = {
 }
 
 function Applicant:Constructor(id, index, activityId, isMythicPlusActivity)
+    -- 重读过一次就算变了: 面板靠它判断这行要不要重画
+    self.revision = (self.revision or 0) + 1
+
     local info = C_LFGList.GetApplicantInfo(id)
     local status = info.applicationStatus
     local pendingStatus = info.pendingApplicationStatus
@@ -68,8 +71,11 @@ function Applicant:Constructor(id, index, activityId, isMythicPlusActivity)
 	local userFactionIndex  = factionGroup
     local msg, isMeetingStone, progression, pvpRating, source  = DecodeDescriptionData(comment)
 
-	local activeEntryInfo = C_LFGList.GetActiveEntryInfo();
-	local activityID = activeEntryInfo.activityIDs[1]
+	local activityID = activityId
+	if not activityID then
+		local activeEntryInfo = C_LFGList.GetActiveEntryInfo()
+		activityID = activeEntryInfo and activeEntryInfo.activityIDs[1]
+	end
 	
 	local bestDungeonScoreForEntry = C_LFGList.GetApplicantDungeonScoreForListing(id, index, activityID);
 	local pvpRatingInfo = C_LFGList.GetApplicantPvpRatingInfoForListing(id, index, activityID);
@@ -130,6 +136,11 @@ function Applicant:Get(id, index, activityId, isMythicPlusActivity)
         obj:Constructor(id, index, activityId, isMythicPlusActivity)
     end
     return obj
+end
+
+-- 只看缓存里有没有, 不重读数据(没被改动过的行可以直接拿它)
+function Applicant:Peek(id, index)
+    return self._Objects[id * 1000 + index]
 end
 
 function Applicant:GetPvPText()

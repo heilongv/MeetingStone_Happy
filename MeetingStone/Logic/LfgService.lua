@@ -11,13 +11,16 @@ function LfgService:OnInitialize()
     self.activityHash = {}
     self.activityList = {}
     self.activityRemoved = {}
+    -- 跨搜索复用的活动对象池(按 searchResultID): 搜索结果一轮一轮地来, 同一批队伍反复重建对象纯属浪费
+    self.activityPool = {}
+    self.activityPoolSeen = {}
+    self.activityPoolGen = 0
 
     self:RegisterEvent('LFG_LIST_SEARCH_RESULTS_RECEIVED')
     self:RegisterEvent('LFG_LIST_SEARCH_FAILED', 'LFG_LIST_SEARCH_RESULTS_RECEIVED')
-    self:RegisterEvent('LFG_LIST_APPLICATION_STATUS_UPDATED', 'LFG_LIST_SEARCH_RESULT_UPDATED')
-    self:RegisterEvent('LFG_LIST_SEARCH_RESULT_UPDATED')
-
-    -- self:RegisterBucketEvent('LFG_LIST_SEARCH_RESULT_UPDATED', 0.1, 'LFG_LIST_SEARCH_RESULT_UPDATED_BUCKET')
+    -- 单个结果变化/申请状态变化都是逐条来的, 攒一个 bucket 再处理, 免得每条都全量刷列表
+    self:RegisterBucketEvent('LFG_LIST_SEARCH_RESULT_UPDATED', 0.2, 'LFG_LIST_SEARCH_RESULT_UPDATED_BUCKET')
+    self:RegisterBucketEvent('LFG_LIST_APPLICATION_STATUS_UPDATED', 0.2, 'LFG_LIST_SEARCH_RESULT_UPDATED_BUCKET')
 
     self:SecureHook(C_LFGList, 'Search', 'C_LFGList_Search')
 end
@@ -83,10 +86,16 @@ function LfgService:CacheActivity(id)
 end
 
 function LfgService:_CacheActivity(id)
-    local activity = Activity:New(id)
+    -- 复用前几轮的对象, 省掉每条队伍的建表开销; 每次 Update 会把状态刷成新的
+    local activity = self.activityPool[id] or Activity:New(id)
     if not activity:Update() then
+        self.activityPool[id] = nil
+        self.activityPoolSeen[id] = nil
         return
     end
+    self.activityPool[id] = activity
+    self.activityPoolSeen[id] = self.activityPoolGen
+
     if self.activityId and activity:GetActivityID() ~= self.activityId then
         return
     end
@@ -108,6 +117,16 @@ function LfgService:LFG_LIST_SEARCH_RESULTS_RECEIVED(event)
     table.wipe(self.activityList)
     table.wipe(self.activityHash)
     table.wipe(self.activityRemoved)
+
+    self.activityPoolGen = self.activityPoolGen + 1
+    -- 连着两轮没露面的对象放掉, 对象池就维持在"最近两轮"的大小
+    for id in pairs(self.activityPool) do
+        local seen = self.activityPoolSeen[id]
+        if not seen or seen < self.activityPoolGen - 1 then
+            self.activityPool[id] = nil
+            self.activityPoolSeen[id] = nil
+        end
+    end
 
     self.inSearch = false
     local applications = C_LFGList.GetApplications()
@@ -132,6 +151,10 @@ function LfgService:LFG_LIST_SEARCH_RESULTS_RECEIVED(event)
 end
 
 function LfgService:LFG_LIST_SEARCH_RESULT_UPDATED_BUCKET(results)
+    -- 搜索进行中时不处理: 结果收完会整轮重建, 这时候逐条更新纯属白干
+    if self.inSearch then
+        return
+    end
     for id in pairs(results) do
         self:UpdateActivity(id)
     end

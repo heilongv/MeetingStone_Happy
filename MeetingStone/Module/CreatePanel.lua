@@ -792,13 +792,26 @@ function CreatePanel:UpdateActivityView()
     end
 end
 
+-- 当前活动只在队伍本身变化时才变, 但这个方法被申请者列表每行重画反复调用,
+-- 每次都重建对象+解一遍备注太亏, 所以按"队伍版本号"缓存一份
+function CreatePanel:InvalidateCurrentActivity()
+    self.entryRevision = (self.entryRevision or 0) + 1
+end
+
 function CreatePanel:GetCurrentActivity()
-    if C_LFGList.HasActiveEntryInfo() then
-        self.Activity = CurrentActivity:FromSystem(C_LFGList.GetActiveEntryInfo())
-        return self.Activity
-    else
+    if not C_LFGList.HasActiveEntryInfo() then
         self.Activity = nil
+        return
     end
+
+    local revision = self.entryRevision or 0
+    local activity = self.Activity
+    if not activity or activity.entryRevision ~= revision then
+        activity = CurrentActivity:FromSystem(C_LFGList.GetActiveEntryInfo())
+        activity.entryRevision = revision
+        self.Activity = activity
+    end
+    return activity
 end
 
 function CreatePanel:LFG_LIST_AVAILABILITY_UPDATE()
@@ -810,6 +823,7 @@ function CreatePanel:LFG_LIST_ACTIVE_ENTRY_UPDATE(_, isCreated)
     if not isCreated then
         self:ClearAllContent()
     end
+    self:InvalidateCurrentActivity()
     self:ChooseWidget()
     C_LFGList.CopyActiveEntryInfoToCreationFields()
 end
@@ -828,6 +842,8 @@ function CreatePanel:PARTY_LEADER_CHANGED()
     --activity:SetHonorLevel(min(activity:GetHonorLevel(), 0))
 
     self:Create(activity)
+    -- 这里改过缓存对象, 让下次重新按系统数据建
+    self:InvalidateCurrentActivity()
 end
 
 function CreatePanel:LFG_LIST_ENTRY_CREATION_FAILED()

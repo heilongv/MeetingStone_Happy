@@ -847,6 +847,8 @@ function BrowsePanel:OnInitialize()
     self:RegisterMessage('MEETINGSTONE_ACTIVITIES_RESULT_UPDATED')
 
     self:RegisterMessage('MEETINGSTONE_SETTING_CHANGED_packedPvp', 'LFG_LIST_AVAILABILITY_UPDATE')
+    -- 设置项(关键词/阵营等)会改过滤结果, 过滤缓存得跟着作废
+    self:RegisterMessage('MEETINGSTONE_SETTING_CHANGED', 'InvalidateActivityFilter')
 
     self:RegisterMessage('MEETINGSTONE_FILTERS_UPDATE', 'UpdateFilters')
 
@@ -939,6 +941,10 @@ function BrowsePanel:OnShow()
     self.SearchBox:SetWidth(220)
 end
 
+function BrowsePanel:InvalidateActivityFilter()
+    self.ActivityList:InvalidateFilter()
+end
+
 -- Modification begin
 -- Restore EditBox anchor
 function BrowsePanel:OnHide()
@@ -960,7 +966,18 @@ function BrowsePanel:LFG_LIST_AVAILABILITY_UPDATE()
     -- self:Refresh()
 end
 
+-- 搜索结果的变化是逐条推过来的, 每条都重排重画会把帧时间吃光: 攒够一个短窗口再刷一次
+local LIST_REFRESH_DELAY = 0.15
+
 function BrowsePanel:MEETINGSTONE_ACTIVITIES_RESULT_UPDATED()
+    if self.listRefreshTimer then
+        return
+    end
+    self.listRefreshTimer = self:ScheduleTimer('RefreshActivityList', LIST_REFRESH_DELAY)
+end
+
+function BrowsePanel:RefreshActivityList()
+    self.listRefreshTimer = nil
     self.ActivityList:Refresh()
 end
 
