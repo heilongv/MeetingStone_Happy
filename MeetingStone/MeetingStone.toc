@@ -1,0 +1,20 @@
+## Interface: 120105,120100
+## Title:|cff19CCF9[LNui][团队]|r MeetingStone
+## Title-zhCN:|cff19CCF9[LNui][团队]|r 集合石
+## Title-zhTW:|cff19CCF9[LNui][團隊]|r 集合石
+## X-Vendor: LNui
+## IconTexture: Interface\AddOns\MeetingStone\Media\Logo
+## Dependencies: !!!Libs
+## Category: 团队
+## Category-zhCN: 团队
+## Category-zhTW: 團隊
+## Version: 12.1.0
+## VersionDate: 20260916
+## Notes-zhCN: |cff00ff00MeetingStone|r|n|cffbc8f8f帮助您更好的组建队伍。|r |cFF008080g|r|cFF008080i|r|cFF008080t|r|cFF008080 |r|cFF008080搜|r|cFF008080索|r|cFF008080 |r|cFFFF80C0【|r|cFF8080C0M|r|cFF8080C0e|r|cFF8080C0e|r|cFF8080C0t|r|cFF8080C0i|r|cFF8080C0n|r|cFF8080C0g|r|cFF8080C0S|r|cFF8080C0t|r|cFF8080C0o|r|cFF8080C0n|r|cFF8080C0e|r|cFF8080C0_|r|cFF8080C0H|r|cFF8080C0a|r|cFF8080C0p|r|cFF8080C0p|r|cFF8080C0y|r|cFFFF80C0】|r
+## Notes-zhTW: |cff00ff00MeetingStone|r|n|cffbc8f8f幫助您更好的組建隊伍。|r|cFF008080g|r|cFF008080i|r|cFF008080t|r|cFF008080 |r|cFF008080搜|r|cFF008080索|r|cFF008080 |r|cFFFF80C0【|r|cFF8080C0M|r|cFF8080C0e|r|cFF8080C0e|r|cFF8080C0t|r|cFF8080C0i|r|cFF8080C0n|r|cFF8080C0g|r|cFF8080C0S|r|cFF8080C0t|r|cFF8080C0o|r|cFF8080C0n|r|cFF8080C0e|r|cFF8080C0_|r|cFF8080C0H|r|cFF8080C0a|r|cFF8080C0p|r|cFF8080C0p|r|cFF8080C0y|r|cFFFF80C0】|r
+## SavedVariables: MEETINGSTONE_UI_DB,MEETINGSTONE_UI_E_POINTS
+## SavedVariablesPerCharacter: MEETINGSTONE_CHARACTER_DB
+## LoadManagers: AddonLoader
+## X-LoadOn-Always: delayed
+
+Load.xml

@@ -1,0 +1,11 @@
+# 插件平台写的标记文件，别进仓库
+dd_author.toc
+addon_version.txt
+
+# 编辑器/系统临时文件
+*.bak
+*.orig
+*~
+Thumbs.db
+desktop.ini
+__pycache__/
