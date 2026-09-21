@@ -197,6 +197,9 @@ end
 --     end
 -- end)
 
+-- 备注解码结果缓存: 同一条备注串只解一次(弱键)。解出来的proto只被读字段, 可以共用。
+local commentDecodeCache = setmetatable({}, {__mode = 'k'})
+
 function DecodeCommetData(comment)
     -- 12.1 secret值不能比较/匹配，提前安全返回，避免报错后整条解析链中断
     if issecretvalue and issecretvalue(comment) then
@@ -205,18 +208,40 @@ function DecodeCommetData(comment)
     if not comment or comment == '' then
         return true, ''
     end
+
+    local cacheable = type(comment) == 'string'
+    if cacheable then
+        local cached = commentDecodeCache[comment]
+        if cached then
+            return cached[1], cached[2], cached[3]
+        end
+    end
+
     local summary, data = comment:match('^(.*)%((^1^.+^^)%)$')
     if not data then
+        if cacheable then
+            commentDecodeCache[comment] = {true, comment}
+        end
         return true, comment
     end
 
     local proto = ActivityProto:New()
     local ok, valid = proto:Deserialize(data)
     if not valid then
+        if cacheable then
+            commentDecodeCache[comment] = {false}
+        end
         return false
     end
     if not ok then
+        if cacheable then
+            commentDecodeCache[comment] = {true, comment}
+        end
         return true, comment
+    end
+
+    if cacheable then
+        commentDecodeCache[comment] = {true, summary, proto}
     end
     return true, summary, proto
 end

@@ -7,6 +7,10 @@ BuildEnv(...)
 
 LfgService = Addon:NewModule('LfgService', 'AceEvent-3.0', 'AceBucket-3.0', 'AceTimer-3.0', 'AceHook-3.0')
 
+-- 一帧最多处理多少条结果变化。攒批会把原来摊在多帧的开销挤进一帧, 所以攒完之后要摊开做,
+-- 否则总工作量是降了, 单帧尖峰反而更高(实测踩过: 20秒里冒出3次>10ms)。
+local UPDATES_PER_FRAME = 10
+
 function LfgService:OnInitialize()
     self.activityHash = {}
     self.activityList = {}
@@ -15,6 +19,8 @@ function LfgService:OnInitialize()
     self.activityPool = {}
     self.activityPoolSeen = {}
     self.activityPoolGen = 0
+    -- 攒下来还没处理的结果变化
+    self.pendingUpdates = {}
 
     self:RegisterEvent('LFG_LIST_SEARCH_RESULTS_RECEIVED')
     self:RegisterEvent('LFG_LIST_SEARCH_FAILED', 'LFG_LIST_SEARCH_RESULTS_RECEIVED')
@@ -117,6 +123,11 @@ function LfgService:LFG_LIST_SEARCH_RESULTS_RECEIVED(event)
     table.wipe(self.activityList)
     table.wipe(self.activityHash)
     table.wipe(self.activityRemoved)
+    -- 新一轮结果到了, 上一轮攒下的待更新项作废
+    table.wipe(self.pendingUpdates)
+    if self.drainFrame then
+        self.drainFrame:Hide()
+    end
 
     self.activityPoolGen = self.activityPoolGen + 1
     -- 连着两轮没露面的对象放掉, 对象池就维持在"最近两轮"的大小
@@ -155,10 +166,48 @@ function LfgService:LFG_LIST_SEARCH_RESULT_UPDATED_BUCKET(results)
     if self.inSearch then
         return
     end
+
+    local pending = self.pendingUpdates
+    local added = false
     for id in pairs(results) do
-        self:UpdateActivity(id)
+        if not pending[id] then
+            pending[id] = true
+            added = true
+        end
     end
-    self:SendMessage('MEETINGSTONE_ACTIVITIES_RESULT_UPDATED')
+    if added then
+        self:StartUpdateDrain()
+    end
+end
+
+function LfgService:StartUpdateDrain()
+    local frame = self.drainFrame
+    if not frame then
+        frame = CreateFrame('Frame')
+        frame:Hide()
+        self.drainFrame = frame
+        frame:SetScript('OnUpdate', function()
+            local pending = self.pendingUpdates
+            local done = 0
+            for id in pairs(pending) do
+                self:UpdateActivity(id)
+                pending[id] = nil
+                done = done + 1
+                if done >= UPDATES_PER_FRAME then
+                    break
+                end
+            end
+
+            if next(pending) == nil then
+                frame:Hide()
+                -- 这一批处理完了才通知列表刷新
+                self:SendMessage('MEETINGSTONE_ACTIVITIES_RESULT_UPDATED')
+            end
+        end)
+    end
+    if not frame:IsShown() then
+        frame:Show()
+    end
 end
 
 function LfgService:LFG_LIST_SEARCH_RESULT_UPDATED(_, id)
