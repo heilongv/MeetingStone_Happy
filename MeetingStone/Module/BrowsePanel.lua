@@ -49,6 +49,8 @@ function BrowsePanel:OnInitialize()
         ActivityList:SetItemClass(Addon:GetClass('BrowseItem'))
         ActivityList:SetSelectMode('RADIO')
         ActivityList:SetScrollStep(9)
+        -- 行跟着自己的数据走: 滚动时只重画新进视野的那一两行(实测滚动开销几乎全在整窗重画上)
+        ActivityList:SetItemBoundRows(true)
         ActivityList:SetItemList(LfgService:GetActivityList())
         ActivityList:SetSortHandler(function(activity)
             return activity:BaseSortHandler()
@@ -847,8 +849,6 @@ function BrowsePanel:OnInitialize()
     self:RegisterMessage('MEETINGSTONE_ACTIVITIES_RESULT_UPDATED')
 
     self:RegisterMessage('MEETINGSTONE_SETTING_CHANGED_packedPvp', 'LFG_LIST_AVAILABILITY_UPDATE')
-    -- 设置项(关键词/阵营等)会改过滤结果, 过滤缓存得跟着作废
-    self:RegisterMessage('MEETINGSTONE_SETTING_CHANGED', 'InvalidateActivityFilter')
 
     self:RegisterMessage('MEETINGSTONE_FILTERS_UPDATE', 'UpdateFilters')
 
@@ -939,10 +939,6 @@ function BrowsePanel:OnShow()
     self.SearchBox:SetParent(self)
     self.SearchBox:SetPoint('LEFT', self.ActivityDropdown, 'RIGHT', 20, 0)
     self.SearchBox:SetWidth(220)
-end
-
-function BrowsePanel:InvalidateActivityFilter()
-    self.ActivityList:InvalidateFilter()
 end
 
 -- Modification begin
@@ -1311,5 +1307,7 @@ function BrowsePanel:GetFilters()
     end
     return filters
 end
+
+
 
 _G.MeetingStone_BrowsePanel = BrowsePanel

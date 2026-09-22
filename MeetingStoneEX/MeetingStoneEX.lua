@@ -15,6 +15,14 @@ function GetSearchResultMemberInfo(...)
 	end
 end    
 
+-- 职业列表是会话内固定的, 过滤器里每条结果都要拿它跟勾选状态比一遍, 提前取好别再逐条问GetClassInfo
+local NUM_CLASSES = GetNumClasses()
+local CLASS_FILES = {}
+for classID = 1, NUM_CLASSES do
+    local _, classFile = GetClassInfo(classID)
+    CLASS_FILES[classID] = classFile
+end
+
 --当前版本的地下城副本
 -- ACTIVITY_NAMES = {
 -- '麦卡贡垃圾场'
@@ -66,15 +74,6 @@ local gameLocale = GetLocale()
 local BrowsePanel = Addon:GetModule('BrowsePanel')
 local MainPanel = Addon:GetModule('MainPanel')
 local Profile = Addon:GetModule('Profile')
-
--- 屏蔽名单是过滤器读的外部状态, 改了就得让列表的过滤缓存作废,
--- 否则被屏蔽的行要等到那条队伍自己变化才消失
-local function InvalidateActivityFilter()
-    local list = BrowsePanel.ActivityList
-    if list and list.InvalidateFilter then
-        list:InvalidateFilter()
-    end
-end
 
 if not MEETINGSTONE_UI_DB.IGNORE_LIST then
     MEETINGSTONE_UI_DB.IGNORE_LIST = {}
@@ -148,9 +147,10 @@ local function CheckJobsFilter(data, tcount, hcount, dcount, ignore_same_job, ac
         local spec = GetSpecialization()
         local roleFn = GetSpecializationRole or (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationRole)
         local myrole = spec and roleFn and roleFn(spec)
+        local roles = activity:GetMemberRoles()
         for i = 1, activity:GetNumMembers() do
-            local role, class = GetSearchResultMemberInfo(activity:GetID(), i)
-            if myrole and role == myrole and class == myclass then
+            local entry = roles[i]
+            if myrole and entry and entry.role == myrole and entry.class == myclass then
                 return false
             end
         end
@@ -218,7 +218,7 @@ BrowsePanel.ActivityList:RegisterFilter(function(activity, ...)
         end
         return false
     end
-    local data = C_LFGList.GetSearchResultMemberCounts(activity:GetID())
+    local data = activity:GetMemberCounts()
     if data then
         local activityItem = BrowsePanel.ActivityDropdown:GetItem()
         if not activityItem then
@@ -339,12 +339,14 @@ BrowsePanel.ActivityList:RegisterFilter(function(activity, ...)
 	
 
 
+	local roles = activity:GetMemberRoles()
 	for i = 1, activity:GetNumMembers() do
-		local role, class, classLocalized, specLocalized = GetSearchResultMemberInfo(activity:GetID(), i)
-		if specLocalized == "初始" then 
+		local entry = roles[i]
+		local class = entry and entry.class
+		if entry and entry.specLocalized == "初始" then 
             return false
         end  
-		if MEETINGSTONE_UI_DB[class] == true  then
+		if class and MEETINGSTONE_UI_DB[class] == true  then
 			if MEETINGSTONE_UI_DB.ClassNeed then
 				classFilter = true
 			else
@@ -355,10 +357,10 @@ BrowsePanel.ActivityList:RegisterFilter(function(activity, ...)
 	 
 	
 	if classFilter == false then
-		for classID = 1,GetNumClasses() do
-			local className, classFile, classID = GetClassInfo(classID)
-			if MEETINGSTONE_UI_DB[classFile] == true  then
+		for i = 1, NUM_CLASSES do
+			if MEETINGSTONE_UI_DB[CLASS_FILES[i]] == true  then
 				allnoCheck = false
+				break
 			end
 		end
 	end
@@ -671,7 +673,6 @@ function BrowsePanel:ToggleActivityMenu(anchor, activity)
             func = function()
                 local name = activity:GetLeader()
                 BrowsePanel.IgnoreLeaderOnly[name] = true
-                InvalidateActivityFilter()
                 if MEETINGSTONE_UI_DB.IGNORE_TIPS_LOG then
                     print(name .. " 已加入黑名单")
                 end
@@ -689,7 +690,6 @@ function BrowsePanel:ToggleActivityMenu(anchor, activity)
                     print('添加过滤：', title)
                 end
                 BrowsePanel.IgnoreWithTitle[title] = true
-                InvalidateActivityFilter()
                 BrowsePanel.ActivityList:Refresh()
             end,
         },
@@ -918,13 +918,11 @@ hooksecurefunc(BrowsePanel.ActivityList, "SetSelected", function(self, index)
         local leader = activity:GetLeader()
         if leader and leader ~= "" then
             BrowsePanel.IgnoreLeaderOnly[leader] = true
-            InvalidateActivityFilter()
         end
     elseif IsShiftKeyDown() then
         local title = activity:GetSummary()
         if title and title ~= "" then
             BrowsePanel.IgnoreWithTitle[title] = true
-            InvalidateActivityFilter()
         end
     end
     self:UpdateFilter()

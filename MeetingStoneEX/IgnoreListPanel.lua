@@ -103,10 +103,6 @@ function IgnoreListPanel:OnInitialize()
                 check.Check:SetChecked(false)
             end
             BrowsePanel.IgnoreWithTitle = {}
-            -- 解除屏蔽后列表得重新判一遍, 不然那些行还挂着"已屏蔽"的旧结论
-            if BrowsePanel.InvalidateActivityFilter then
-                BrowsePanel:InvalidateActivityFilter()
-            end
             self.IgnoreList:Refresh()
         end)
     end

@@ -8,21 +8,11 @@ end
 function View:RegisterFilter(method)
     if type(method) == 'function' then
         self.filter = method
-        self:InvalidateFilter()
     end
 end
 
 function View:UnregisterFilter()
     self.filter = nil
-    self:InvalidateFilter()
-end
-
--- 过滤结果按条目缓存: 判过的条目只有自己变了(版本号变了)才重跑
-function View:InvalidateFilter()
-    if self.filterPass then
-        wipe(self.filterPass)
-        wipe(self.filterRev)
-    end
 end
 
 function View:SetFilterText(filterText, ...)
@@ -33,7 +23,6 @@ function View:SetFilterText(filterText, ...)
     self.filterArgs = {...}
     self.filterArgCount = select('#', ...)
 
-    self:InvalidateFilter()
     self:UpdateFilter()
     self:Refresh()
 end
@@ -61,32 +50,14 @@ function View:UpdateFilter()
 
     self.filterList = wipe(self.filterList or {})
 
-    local passCache, revCache = self.filterPass, self.filterRev
-    if not passCache then
-        passCache = setmetatable({}, {__mode = 'k'})
-        revCache = setmetatable({}, {__mode = 'k'})
-        self.filterPass, self.filterRev = passCache, revCache
-    end
-
+    -- 判定结果不缓存: 过滤器会读一堆外部开关(职业/职责/分数过滤、屏蔽名单、spam词),
+    -- 而EX那些开关是直接写DB再Refresh的, 没有可靠的通知点, 缓存住会让"过滤看着失效"。
+    -- 实测每轮全量判定只占每次刷新零点几毫秒, 不值得为它冒这个险。
     local filterText = self:GetFilterText()
 
     for i = 1 + self:GetExcludeCount(), #self.itemList do
-        local item = self.itemList[i]
-        local getter = item.GetRevision
-        local revision = getter and getter(item)
-
-        if revision then
-            -- 有版本号的条目走缓存; 没版本号的(外部数据表之类)照旧每次都判
-            if revCache[item] ~= revision then
-                revCache[item] = revision
-                -- GetFilterArgs()可能返回多个值, 必须留在最后一个实参位展开
-                passCache[item] = filter(item, filterText, self:GetFilterArgs()) and true or false
-            end
-            if passCache[item] then
-                tinsert(self.filterList, item)
-            end
-        elseif filter(item, filterText, self:GetFilterArgs()) then
-            tinsert(self.filterList, item)
+        if filter(self.itemList[i], filterText, self:GetFilterArgs()) then
+            tinsert(self.filterList, self.itemList[i])
         end
     end
 end

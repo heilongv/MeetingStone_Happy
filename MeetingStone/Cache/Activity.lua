@@ -45,6 +45,42 @@ function Activity:GetRevision()
     return self.revision
 end
 
+-- 成员构成只在队伍变化时才变, 但列表每重绘一次都要问一次暴雪(每次还新建一张表)
+function Activity:GetMemberCounts()
+    if self.memberCountsRevision ~= self.revision then
+        self.memberCountsRevision = self.revision
+        self.memberCounts = C_LFGList.GetSearchResultMemberCounts(self:GetID())
+    end
+    return self.memberCounts
+end
+
+-- 每个成员的角色/职业/天赋名: 过滤器每轮要对每条队伍逐成员问一遍, 队伍没变就复用
+function Activity:GetMemberRoles()
+    if self.memberRolesRevision ~= self.revision then
+        self.memberRolesRevision = self.revision
+
+        local roles = self.memberRoles or {}
+        self.memberRoles = roles
+
+        local count = self:GetNumMembers() or 0
+        for i = 1, count do
+            local role, class, classLocalized, specLocalized = LfgService:GetSearchResultMemberInfo(self:GetID(), i)
+            local entry = roles[i]
+            if not entry then
+                entry = {}
+                roles[i] = entry
+            end
+            entry.role = role
+            entry.class = class
+            entry.specLocalized = specLocalized
+        end
+        for i = count + 1, #roles do
+            roles[i] = nil
+        end
+    end
+    return self.memberRoles
+end
+
 -- [已移除] 此处原为混淆的 loadstring 动态执行代码（检测队伍职业集中度），其调用点已被注释，属死代码；移除可省去加载期执行开销
 function Activity:Update()
     -- 刷新一次就算变过一次: 过滤缓存和排序键靠它判断要不要重算

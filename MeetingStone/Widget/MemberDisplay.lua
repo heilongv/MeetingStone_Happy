@@ -54,7 +54,7 @@ end
 
 function MemberDisplay:SetActivity(activity)
     self.resultID = activity:GetID()
-    local displayData = C_LFGList.GetSearchResultMemberCounts(self.resultID)
+    local displayData = activity:GetMemberCounts()
     if displayData then
         LFGListGroupDataDisplay_Update(self.DataDisplay, activity:GetActivityID(), displayData, activity:IsDelisted() or activity:IsApplicationFinished())
         self.DataDisplay:Show()

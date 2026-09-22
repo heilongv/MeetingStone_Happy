@@ -409,9 +409,6 @@ function RecentPanel:ToggleUnitMenu(anchor, player)
                             t = 2,
                         })
 					print(name.." 已加入黑名单")
-					if BrowsePanel.InvalidateActivityFilter then
-						BrowsePanel:InvalidateActivityFilter()
-					end
                 else
                     print("未加载<|cff00ff00MeetingStoneEx|r>插件")
 				end
