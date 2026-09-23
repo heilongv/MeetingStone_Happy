@@ -29,6 +29,18 @@ function LfgService:OnInitialize()
     self:RegisterBucketEvent('LFG_LIST_APPLICATION_STATUS_UPDATED', 0.2, 'LFG_LIST_SEARCH_RESULT_UPDATED_BUCKET')
 
     self:SecureHook(C_LFGList, 'Search', 'C_LFGList_Search')
+
+    -- 列表里"自己/同队/好友"那类判断取决于组队与好友状态, 这些事件一来就让相关缓存作废
+    self.groupGeneration = 0
+    self:RegisterEvent('GROUP_ROSTER_UPDATE', 'BumpGroupGeneration')
+    self:RegisterEvent('PARTY_LEADER_CHANGED', 'BumpGroupGeneration')
+    self:RegisterEvent('PLAYER_ENTERING_WORLD', 'BumpGroupGeneration')
+    self:RegisterEvent('FRIENDLIST_UPDATE', 'BumpGroupGeneration')
+    self:RegisterEvent('BN_FRIEND_LIST_SIZE_CHANGED', 'BumpGroupGeneration')
+end
+
+function LfgService:BumpGroupGeneration()
+    self.groupGeneration = (self.groupGeneration or 0) + 1
 end
 
 function LfgService:C_LFGList_Search()

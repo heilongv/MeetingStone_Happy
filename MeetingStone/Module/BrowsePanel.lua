@@ -20,6 +20,50 @@ end
 BrowsePanel = Addon:NewModule(CreateFrame('Frame'), 'BrowsePanel', 'AceEvent-3.0', 'AceTimer-3.0', 'AceSerializer-3.0',
     'AceBucket-3.0')
 
+-- 状态列那个图标要问好几个暴雪接口(自己/同队/在申请/金银团长/好友), 一帧里每行都问一遍太亏;
+-- 队伍自身没变(revision)且组队/好友状态没变(generation)就直接用上次的结果
+local statusIconCache = setmetatable({}, {__mode = 'k'})
+
+local function ComputeStatusIcon(activity)
+    if activity:IsUnusable() then
+        return
+    elseif activity:IsSelf() then
+        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0.25, 0.375, 0, 1
+    elseif activity:IsInActivity() then
+        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0.375, 0.5, 0, 1
+    elseif activity:IsApplication() then
+        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0.5, 0.625, 0, 1
+    elseif activity:IsGoldLeader() then
+        return [[Interface\AddOns\MeetingStone\Media\GlodLeaderIcon]], 0.0, 1.0, 0, 1
+    elseif activity:IsSilverLeader() then
+        return [[Interface\AddOns\MeetingStone\Media\SilverLeaderIcon]], 0.0, 1.0, 0, 1
+    elseif activity:IsAnyFriend() then
+        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0, 0.125, 0, 1
+    end
+end
+
+local function GetStatusIcon(activity)
+    if not activity.GetRevision then
+        return ComputeStatusIcon(activity)
+    end
+
+    local revision = activity:GetRevision()
+    local generation = LfgService.groupGeneration
+    local cache = statusIconCache[activity]
+    if cache and cache.revision == revision and cache.generation == generation then
+        return cache.icon, cache.left, cache.right, cache.top, cache.bottom
+    end
+
+    local icon, left, right, top, bottom = ComputeStatusIcon(activity)
+    if not cache then
+        cache = {}
+        statusIconCache[activity] = cache
+    end
+    cache.revision, cache.generation = revision, generation
+    cache.icon, cache.left, cache.right, cache.top, cache.bottom = icon, left, right, top, bottom
+    return icon, left, right, top, bottom
+end
+
 function BrowsePanel:OnInitialize()
     local gameLocale = GetLocale()
     local lang
@@ -70,23 +114,7 @@ function BrowsePanel:OnInitialize()
                 style = 'ICON:20:20',
                 width = 30,
                 enableMouse = true,
-                iconHandler = function(activity)
-                    if activity:IsUnusable() then
-                        return
-                    elseif activity:IsSelf() then
-                        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0.25, 0.375, 0, 1
-                    elseif activity:IsInActivity() then
-                        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0.375, 0.5, 0, 1
-                    elseif activity:IsApplication() then
-                        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0.5, 0.625, 0, 1
-                    elseif activity:IsGoldLeader() then
-                        return [[Interface\AddOns\MeetingStone\Media\GlodLeaderIcon]], 0.0, 1.0, 0, 1
-                    elseif activity:IsSilverLeader() then
-                        return [[Interface\AddOns\MeetingStone\Media\SilverLeaderIcon]], 0.0, 1.0, 0, 1
-                    elseif activity:IsAnyFriend() then
-                        return [[Interface\AddOns\MeetingStone\Media\Icons]], 0, 0.125, 0, 1
-                    end
-                end,
+                iconHandler = GetStatusIcon,
                 sortHandler = ActivityList:GetSortHandler(),
             }, {
             key = 'Title',

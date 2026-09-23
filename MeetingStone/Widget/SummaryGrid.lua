@@ -98,7 +98,13 @@ function SummaryGrid:SetActivity(activity)
     self.voiceChat = activity:GetVoiceChat()
     self.Spinner:SetShown(pendingStatus == 'applied')
     self.Summary:SetText(activity:GetComment())
-    self.Summary:SetFontObject((activity:IsDelisted() or activity:IsApplicationFinished()) and 'GameFontDisableLeft' or 'GameFontHighlightLeft')
+    -- 换字体对象会触发文字重排; 状态没变就别换
+    local fontObject = (activity:IsDelisted() or activity:IsApplicationFinished()) and 'GameFontDisableLeft' or
+                           'GameFontHighlightLeft'
+    if self.appliedFontObject ~= fontObject then
+        self.appliedFontObject = fontObject
+        self.Summary:SetFontObject(fontObject)
+    end
     self.CancelButton:SetEnabled(LFGListUtil_IsAppEmpowered())
     self.CancelButton.tooltip = not LFGListUtil_IsAppEmpowered() and LFG_LIST_APP_UNEMPOWERED
     self.VoiceChat:SetShown(activity:GetVoiceChat())
