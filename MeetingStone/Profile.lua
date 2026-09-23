@@ -15,6 +15,12 @@ local DEFAULT_CHATGROUP_COLOR = {
 }
 
 function Profile:OnInitialize()
+    -- 这个函数会被调两次: InitMeetingStoneClass 提前调一次(主流程那会儿就要用存档), AceAddon 后面还会调一次。
+    -- 不管调几次只能建一份 AceDB, 同一份存档上两个实例会各自往里面写、下线时互相打架(丢过整张 recent 表)
+    if self.gdb then
+        return
+    end
+
     local gdb = {
         global = {
             ActivityProfiles  = {
