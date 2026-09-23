@@ -76,6 +76,8 @@ function Profile:OnInitialize()
     self.gdb = LibStub('AceDB-3.0'):New('MEETINGSTONE_UI_DB', gdb, true)
     self.cdb = LibStub('AceDB-3.0'):New('MEETINGSTONE_CHARACTER_DB', cdb)
 
+    self:NormBlockList()
+
     local settingVersion = self:GetLastCharacterVersion()
     if settingVersion < 70300.12 then
         self.cdb.profile.settings.onlyms = nil
@@ -161,6 +163,218 @@ end
 
 function Profile:GetEnableIgnoreTitle()
     return self:GetGlobalOption('enableIgnoreTitle')
+end
+
+-- 屏蔽名单在 MEETINGSTONE_UI_DB.IGNORE_LIST 里, 就三条平行数组, 同下标的三个值属于同一个人:
+-- n=名字, tm=屏蔽时间, kd=为什么被屏蔽。这么存比"一条一个表"省掉三分之二的存档
+local BLOCK_TITLE  = 1
+local BLOCK_LEADER = 2
+local BLOCK_RECENT = 3
+local BLOCK_LEGACY = 0   -- 更老的filters表转过来的, 只在列表里显示
+
+-- 外面(EX的过滤器/最近玩友/屏蔽列表面板)按这几个值认条目该进哪个屏蔽map, 数字含义只在这儿定义
+Profile.BLOCK_TITLE, Profile.BLOCK_LEADER = BLOCK_TITLE, BLOCK_LEADER
+Profile.BLOCK_RECENT, Profile.BLOCK_LEGACY = BLOCK_RECENT, BLOCK_LEGACY
+
+local BLOCK_DEP = {
+    [BLOCK_TITLE]  = '由指定标题传染屏蔽',
+    [BLOCK_LEADER] = '由指定队长名屏蔽',
+    [BLOCK_RECENT] = '从最近玩友屏蔽',
+    [BLOCK_LEGACY] = '旧数据结构转化',
+}
+
+local BLOCK_DEP_KIND = {}
+for kind, text in pairs(BLOCK_DEP) do
+    BLOCK_DEP_KIND[text] = kind
+end
+
+-- 时间记到分钟就够了, 压成'yymmddhhmm'十位, 面板上原来那串能拼回来。
+-- 不存epoch是因为老存档那串是本地时间, 反推epoch得按当时那个日期的时区/DST算, 算错就整体偏一小时
+local function packBlockTime(t)
+    if type(t) ~= 'string' then
+        return ''
+    end
+    local y, mo, d, h, mi = t:match('^(%d%d%d%d)-(%d%d)-(%d%d) (%d%d):(%d%d)$')
+    if not y then
+        return ''
+    end
+    return y:sub(3) .. mo .. d .. h .. mi
+end
+
+-- 世纪那两位丢掉了, 20xx够用
+local function unpackBlockTime(t)
+    if type(t) ~= 'string' or #t ~= 10 then
+        return ''
+    end
+    return '20' .. t:sub(1, 2) .. '-' .. t:sub(3, 4) .. '-' .. t:sub(5, 6) .. ' ' .. t:sub(7, 8) .. ':' .. t:sub(9, 10)
+end
+
+-- 老存档里 t=2 的备注有两种(点名队长/最近玩友), 只能照文案认
+local function blockKind(t, dep)
+    local kind = dep and BLOCK_DEP_KIND[dep]
+    if kind then
+        return kind
+    end
+    if t == BLOCK_TITLE then
+        return BLOCK_TITLE
+    end
+    if t == BLOCK_LEADER then
+        return BLOCK_LEADER
+    end
+    return BLOCK_LEGACY
+end
+
+local function plainKind(kind)
+    if kind == BLOCK_TITLE or kind == BLOCK_LEADER or kind == BLOCK_RECENT then
+        return kind
+    end
+    return BLOCK_LEGACY
+end
+
+-- 老存档是数组套表(leader/time/dep/t), 更老的是 db.filters 那张map, 都在这儿归一成三条平行数组。
+-- 每次开档都过一遍(已经是对的就空转), 半路降级回老版本再升上来的也能自己长回来
+function Profile:NormBlockList()
+    local db = MEETINGSTONE_UI_DB
+    local list = db.IGNORE_LIST
+    if type(list) ~= 'table' then
+        list = {}
+        db.IGNORE_LIST = list
+    end
+
+    self.blockMap = {}
+    self.blockRevision = 0
+
+    local names, times, kinds = list.n, list.tm, list.kd
+    local len = type(names) == 'table' and #names or 0
+    if len > 0 and type(times) == 'table' and #times == len and type(kinds) == 'table' and #kinds == len
+        and list[1] == nil and db.filters == nil then
+        for i = 1, len do
+            self.blockMap[names[i]] = plainKind(kinds[i])
+        end
+        return
+    end
+
+    -- 三种来源按 新格式 / 数组套表 / 老filters 的顺序收, 重名只留先收进来的
+    local outN, outT, outK, num = {}, {}, {}, 0
+    local function take(name, t, kind)
+        if type(name) ~= 'string' or name == '' or self.blockMap[name] then
+            return
+        end
+        self.blockMap[name] = kind
+        num = num + 1
+        outN[num], outT[num], outK[num] = name, t, kind
+    end
+
+    if len > 0 then
+        for i = 1, len do
+            take(names[i], type(times) == 'table' and times[i] or '', plainKind(type(kinds) == 'table' and kinds[i] or nil))
+        end
+    end
+    for i = 1, #list do
+        local entry = list[i]
+        if type(entry) == 'table' then
+            take(entry.leader, packBlockTime(entry.time), blockKind(entry.t, entry.dep))
+        end
+    end
+    if db.filters then
+        for name, t in pairs(db.filters) do
+            take(name, packBlockTime(t), BLOCK_LEGACY)
+        end
+        db.filters = nil
+    end
+
+    -- 列表是"新的在上面", 时间认不出来的排最后
+    local order = {}
+    for i = 1, num do
+        order[i] = i
+    end
+    table.sort(order, function(a, b)
+        if outT[a] == outT[b] then
+            return outN[a] < outN[b]
+        end
+        return outT[a] > outT[b]
+    end)
+
+    wipe(list)
+    list.n, list.tm, list.kd = {}, {}, {}
+    for i = 1, num do
+        local j = order[i]
+        list.n[i], list.tm[i], list.kd[i] = outN[j], outT[j], outK[j]
+    end
+end
+
+function Profile:GetBlockNum()
+    return #MEETINGSTONE_UI_DB.IGNORE_LIST.n
+end
+
+function Profile:GetBlockLeader(index)
+    return MEETINGSTONE_UI_DB.IGNORE_LIST.n[index]
+end
+
+function Profile:GetBlockTimeText(index)
+    return unpackBlockTime(MEETINGSTONE_UI_DB.IGNORE_LIST.tm[index])
+end
+
+function Profile:GetBlockKind(index)
+    return MEETINGSTONE_UI_DB.IGNORE_LIST.kd[index]
+end
+
+function Profile:GetBlockDep(index)
+    return BLOCK_DEP[MEETINGSTONE_UI_DB.IGNORE_LIST.kd[index]] or BLOCK_DEP[BLOCK_LEGACY]
+end
+
+-- 面板靠这个认名单变没变, 没变就不用重造行(勾上的东西还能留着)
+function Profile:GetBlockRevision()
+    return self.blockRevision
+end
+
+-- 新条目插最前面: 列表本来就是新的在上, 这样读档时不用整表再排一遍
+local function addBlock(self, name, kind)
+    local list = MEETINGSTONE_UI_DB.IGNORE_LIST
+    if type(name) ~= 'string' or name == '' or self.blockMap[name] then
+        return false
+    end
+    self.blockMap[name] = kind
+    tinsert(list.n, 1, name)
+    tinsert(list.tm, 1, date('%y%m%d%H%M'))
+    tinsert(list.kd, 1, kind)
+    self.blockRevision = self.blockRevision + 1
+    return true
+end
+
+function Profile:AddBlockTitle(name)
+    return addBlock(self, name, BLOCK_TITLE)
+end
+
+function Profile:AddBlockLeader(name)
+    return addBlock(self, name, BLOCK_LEADER)
+end
+
+function Profile:AddBlockRecent(name)
+    return addBlock(self, name, BLOCK_RECENT)
+end
+
+-- 面板一次可能勾掉一大片, 三条数组扫一遍就够了; set = {名字 = true}
+function Profile:DelBlocks(set)
+    local list = MEETINGSTONE_UI_DB.IGNORE_LIST
+    local keep, removed = 0, 0
+    for i = 1, #list.n do
+        local name = list.n[i]
+        if set[name] then
+            self.blockMap[name] = nil
+            removed = removed + 1
+        else
+            keep = keep + 1
+            list.n[keep], list.tm[keep], list.kd[keep] = name, list.tm[i], list.kd[i]
+        end
+    end
+    for i = #list.n, keep + 1, -1 do
+        list.n[i], list.tm[i], list.kd[i] = nil, nil, nil
+    end
+    if removed > 0 then
+        self.blockRevision = self.blockRevision + 1
+    end
+    return removed
 end
 
 function Profile:GetGlobalPanelPos()

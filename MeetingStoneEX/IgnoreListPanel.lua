@@ -2,6 +2,7 @@ BuildEnv(...)
 
 local BrowsePanel = Addon:GetModule('BrowsePanel')
 local MainPanel = Addon:GetModule('MainPanel')
+local Profile = Addon:GetModule('Profile')
 
 IgnoreListPanel = Addon:NewModule(CreateFrame('Frame', nil, MainPanel), 'IgnoreListPanel', 'AceEvent-3.0', 'AceTimer-3.0', 'AceSerializer-3.0',
                               'AceBucket-3.0')
@@ -20,7 +21,6 @@ function IgnoreListPanel:OnInitialize()
     IgnoreList:SetItemClass(Addon:GetClass('BrowseItem'))
     IgnoreList:SetSelectMode('RADIO')
     IgnoreList:SetScrollStep(9)
-    self.checkBoxs = {}
     IgnoreList:InitHeader({
         {
             key = '@',
@@ -36,7 +36,6 @@ function IgnoreListPanel:OnInitialize()
                 grid:SetCallback('OnChanged', function ( data )
                     if activity then
                         activity.selected = data.Check:GetChecked()
-                        self.checkBoxs[data] = true
                     end
                 end)
             end,
@@ -79,9 +78,12 @@ function IgnoreListPanel:OnInitialize()
         },
     })
     IgnoreList:SetHeaderPoint('BOTTOMLEFT', IgnoreList, 'TOPLEFT', -2, 2)
-    IgnoreList:SetItemList(MEETINGSTONE_UI_DB.IGNORE_LIST)
     self.IgnoreList = IgnoreList
 
+    -- 行是临时的: 存档里只有名字/时间/原因三条平行数组, 勾选状态也就没必要写进存档
+    self.rows = {}
+    self.rowByName = {}
+    self.revision = -1
 
     local RemoveIgnore = CreateFrame('Button', nil, self, 'UIPanelButtonTemplate')
     do
@@ -89,21 +91,21 @@ function IgnoreListPanel:OnInitialize()
         RemoveIgnore:SetPoint('BOTTOM', MainPanel, 'BOTTOM', 0, 4)
         RemoveIgnore:SetText('移除勾选玩家')
         RemoveIgnore:SetScript('OnClick', function()
-            for i=#MEETINGSTONE_UI_DB.IGNORE_LIST,1,-1 do
-                local tb = MEETINGSTONE_UI_DB.IGNORE_LIST[i]
-                tb.data = nil
-                if tb.selected then
-                    tb.selected = nil
-                    table.remove(MEETINGSTONE_UI_DB.IGNORE_LIST,i)
-                    BrowsePanel.IgnoreWithLeader[tb.leader] = nil
-                    BrowsePanel.IgnoreLeaderOnly[tb.leader] = nil
+            local del = {}
+            for i = 1, #self.rows do
+                local row = self.rows[i]
+                if row.selected then
+                    del[row.leader] = true
                 end
             end
-            for check,v in pairs(self.checkBoxs) do
-                check.Check:SetChecked(false)
+            if not next(del) then
+                return
             end
+
+            Profile:DelBlocks(del)
+            -- 名单变了, 重造行(删掉的人不会再有行, 缓存顺手也就干净了)
+            self:UpdateRows()
             BrowsePanel.IgnoreWithTitle = {}
-            self.IgnoreList:Refresh()
         end)
     end
 
@@ -117,10 +119,50 @@ function IgnoreListPanel:OnInitialize()
         ClearIgnore:SetText('全选/取消全选')
         ClearIgnore:RegisterForClicks('anyUp')
         ClearIgnore:SetScript('OnClick', function()
-            for i,v in ipairs(MEETINGSTONE_UI_DB.IGNORE_LIST) do
-                v.selected = not v.selected
+            for i = 1, #self.rows do
+                local row = self.rows[i]
+                row.selected = not row.selected
             end
             self.IgnoreList:Refresh()
         end)
     end
+
+    self:SetScript('OnShow', self.OnShow)
+    self:UpdateRows()
+end
+
+-- 名单变了才重造行; 没变就别动, 勾上的东西还能留着
+function IgnoreListPanel:UpdateRows()
+    local revision = Profile:GetBlockRevision()
+    if self.revision == revision then
+        return
+    end
+    self.revision = revision
+
+    local old = self.rowByName
+    local rows, rowByName = {}, {}
+    for i = 1, Profile:GetBlockNum() do
+        local leader = Profile:GetBlockLeader(i)
+        local row = old[leader]
+        if row then
+            row.time = Profile:GetBlockTimeText(i)
+            row.dep = Profile:GetBlockDep(i)
+        else
+            row = {
+                leader = leader,
+                time = Profile:GetBlockTimeText(i),
+                dep = Profile:GetBlockDep(i),
+            }
+        end
+        rows[i] = row
+        rowByName[leader] = row
+    end
+
+    self.rows = rows
+    self.rowByName = rowByName
+    self.IgnoreList:SetItemList(rows)
+end
+
+function IgnoreListPanel:OnShow()
+    self:UpdateRows()
 end

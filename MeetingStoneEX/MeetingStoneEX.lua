@@ -75,10 +75,6 @@ local BrowsePanel = Addon:GetModule('BrowsePanel')
 local MainPanel = Addon:GetModule('MainPanel')
 local Profile = Addon:GetModule('Profile')
 
-if not MEETINGSTONE_UI_DB.IGNORE_LIST then
-    MEETINGSTONE_UI_DB.IGNORE_LIST = {}
-end
-
 -- if not MEETINGSTONE_UI_DB.CLEAR_IGNORE_LIST_V1 then
 --     MEETINGSTONE_UI_DB.CLEAR_IGNORE_LIST_V1 = false
 --     MEETINGSTONE_UI_DB.IGNORE_LIST = {}
@@ -90,45 +86,16 @@ end
 --     MEETINGSTONE_UI_DB.CLEAR_IGNORE_LIST_V1 = true
 -- end
 
-if MEETINGSTONE_UI_DB.filters then
-    for k, v in pairs(MEETINGSTONE_UI_DB.filters) do
-        table.insert(MEETINGSTONE_UI_DB.IGNORE_LIST, {
-            leader = k,
-            time = v,
-            dep = '旧数据结构转化',
-        })
-    end
-    MEETINGSTONE_UI_DB.filters = nil
-end
-
-for i, v in ipairs(MEETINGSTONE_UI_DB.IGNORE_LIST) do
-    if v.leader == nil then
-        table.remove(MEETINGSTONE_UI_DB.IGNORE_LIST, i)
-    end
-    v.titles = nil
-    if v.time == true then
-        v.time = ''
-    end
-end
-
-table.sort(MEETINGSTONE_UI_DB.IGNORE_LIST, function(a, b)
-    if a.time == b.time then
-        return a.leader < b.leader
-    end
-    if type(a.time) == type(b.time) and type(a.time) == 'string' then
-        return a.time > b.time
-    end
-    return type(a.time) == 'string'
-end)
-
+-- 名单怎么存、老存档怎么转都在 Profile:NormBlockList, 这边只把它翻成过滤器要的两个map
 BrowsePanel.IgnoreWithTitle = {}
 BrowsePanel.IgnoreWithLeader = {}
 BrowsePanel.IgnoreLeaderOnly = {}
-for i, v in ipairs(MEETINGSTONE_UI_DB.IGNORE_LIST) do
-    if v.t == 1 then
-        BrowsePanel.IgnoreWithLeader[v.leader] = true
-    elseif v.t == 2 then
-        BrowsePanel.IgnoreLeaderOnly[v.leader] = true
+for i = 1, Profile:GetBlockNum() do
+    local kind = Profile:GetBlockKind(i)
+    if kind == Profile.BLOCK_TITLE then
+        BrowsePanel.IgnoreWithLeader[Profile:GetBlockLeader(i)] = true
+    elseif kind ~= Profile.BLOCK_LEGACY then
+        BrowsePanel.IgnoreLeaderOnly[Profile:GetBlockLeader(i)] = true
     end
 end
 if MEETINGSTONE_UI_DB.IGNORE_TIPS_LOG == nil then
@@ -201,21 +168,7 @@ BrowsePanel.ActivityList:RegisterFilter(function(activity, ...)
         return false
     end
     if BrowsePanel.IgnoreLeaderOnly[leader] then
-        local ist = true
-        for i, v in ipairs(MEETINGSTONE_UI_DB.IGNORE_LIST) do
-            if v.leader == leader then
-                ist = false
-                break
-            end
-        end
-        if ist then
-            table.insert(MEETINGSTONE_UI_DB.IGNORE_LIST, 1, {
-                leader = leader,
-                time = date('%Y-%m-%d %H:%M', time()),
-                dep = '由指定队长名屏蔽',
-                t = 2,
-            })
-        end
+        -- 条目在用户点屏蔽那几下就写进去了(菜单/ctrl点/最近玩友), 这里不用再补
         return false
     end
     local data = activity:GetMemberCounts()
@@ -292,17 +245,10 @@ BrowsePanel.ActivityList:RegisterFilter(function(activity, ...)
     if Profile:GetEnableIgnoreTitle() then
         local title = activity:GetSummary()
         if BrowsePanel.IgnoreWithTitle[title] then
-            if not BrowsePanel.IgnoreWithLeader[leader] then
-                BrowsePanel.IgnoreWithLeader[leader] = true
-                table.insert(MEETINGSTONE_UI_DB.IGNORE_LIST, 1, {
-                    leader = leader,
-                    time = date('%Y-%m-%d %H:%M', time()),
-                    dep = '由指定标题传染屏蔽',
-                    t = 1,
-                })
-                if MEETINGSTONE_UI_DB.IGNORE_TIPS_LOG then
-                    print('标题 ' .. title .. ' 传染屏蔽 ' .. leader)
-                end
+            local isNew = Profile:AddBlockTitle(leader)
+            BrowsePanel.IgnoreWithLeader[leader] = true
+            if isNew and MEETINGSTONE_UI_DB.IGNORE_TIPS_LOG then
+                print('标题 ' .. title .. ' 传染屏蔽 ' .. leader)
             end
             return false
         end
@@ -673,6 +619,7 @@ function BrowsePanel:ToggleActivityMenu(anchor, activity)
             func = function()
                 local name = activity:GetLeader()
                 BrowsePanel.IgnoreLeaderOnly[name] = true
+                Profile:AddBlockLeader(name)
                 if MEETINGSTONE_UI_DB.IGNORE_TIPS_LOG then
                     print(name .. " 已加入黑名单")
                 end
@@ -918,6 +865,7 @@ hooksecurefunc(BrowsePanel.ActivityList, "SetSelected", function(self, index)
         local leader = activity:GetLeader()
         if leader and leader ~= "" then
             BrowsePanel.IgnoreLeaderOnly[leader] = true
+            Profile:AddBlockLeader(leader)
         end
     elseif IsShiftKeyDown() then
         local title = activity:GetSummary()
